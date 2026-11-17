@@ -146,7 +146,7 @@ export function BoardView() {
               onDragLeave={() => handleDragLeave(col.status)}
               onDrop={(e) => handleDrop(e, col.status)}
               className={cn(
-                "flex flex-col rounded-xl border bg-muted/30 p-3 transition-colors min-h-[500px]",
+                "flex flex-col rounded-xl border bg-muted/30 p-3 transition-colors min-h-[160px] md:min-h-[500px]",
                 isOver && "ring-2 ring-primary bg-primary/5",
                 col.color
               )}

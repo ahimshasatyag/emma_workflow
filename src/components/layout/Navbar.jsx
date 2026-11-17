@@ -22,6 +22,16 @@ export function Navbar({ onOpenSidebar }) {
   )
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false)
+  const [isScrolled, setIsScrolled] = useState(false)
+
+  // Pantau scroll window agar navbar mobile tetap sticky mengikuti scroll dengan efek elevasi
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 8)
+    }
+    window.addEventListener("scroll", handleScroll, { passive: true })
+    return () => window.removeEventListener("scroll", handleScroll)
+  }, [])
 
   // Pantau perubahan class 'dark' pada <html> agar sinkron dengan sidebar
   useEffect(() => {
@@ -133,13 +143,24 @@ export function Navbar({ onOpenSidebar }) {
   ]
 
   return (
-    <header className="sticky top-3 z-30 px-3 sm:px-6 w-full select-none">
-      {/* Floating Capsule Navbar Container - Putih bersih saat Light Mode, Elegan Gelap saat Dark Mode */}
+    <header
+      className={cn(
+        "sticky top-0 sm:top-3 z-40 w-full select-none transition-all duration-200",
+        "px-2.5 sm:px-6",
+        isScrolled ? "py-1.5 sm:py-0" : "py-2 sm:py-0"
+      )}
+    >
+      {/* Floating Capsule Navbar Container - Selalu mengikuti scroll di layar handphone dan desktop */}
       <motion.div
         initial={{ y: -8, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.25, ease: "easeOut" }}
-        className="relative flex h-14 items-center justify-between rounded-2xl sm:rounded-[22px] bg-white/90 dark:bg-[#191b22]/95 backdrop-blur-md border border-neutral-200/80 dark:border-neutral-800 shadow-[0_4px_20px_rgba(0,0,0,0.04)] dark:shadow-[0_8px_25px_rgba(0,0,0,0.25)] px-4 sm:px-5 transition-colors duration-200"
+        className={cn(
+          "relative flex h-14 items-center justify-between rounded-2xl sm:rounded-[22px]",
+          "bg-white/95 dark:bg-[#191b22]/95 backdrop-blur-md border border-neutral-200/80 dark:border-neutral-800",
+          "shadow-[0_4px_20px_rgba(0,0,0,0.05)] dark:shadow-[0_8px_25px_rgba(0,0,0,0.25)] px-3.5 sm:px-5 transition-all duration-200",
+          isScrolled && "shadow-[0_8px_28px_rgba(0,0,0,0.12)] dark:shadow-[0_10px_35px_rgba(0,0,0,0.4)]"
+        )}
       >
         {/* Left Side: Mobile Menu Trigger & Breadcrumbs */}
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">

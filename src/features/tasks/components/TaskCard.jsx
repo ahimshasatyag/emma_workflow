@@ -10,7 +10,7 @@ import {
   Building2,
   Users,
 } from "lucide-react"
-import { TASK_PRIORITY, TASK_STATUS } from "@/config/constants"
+import { TASK_PRIORITY, TASK_STATUS, TASK_STATUS_LABELS } from "@/config/constants"
 import { formatDate } from "@/lib/formatDate"
 import { useTaskStore } from "../stores/taskStore"
 import { TEAM_GROUPS } from "../data/teamData"
@@ -185,34 +185,59 @@ export function TaskCard({ task, onDragStart, onMoveTask }) {
         </div>
       </div>
 
-      {/* Quick Move Arrows */}
-      <div className="mt-2.5 flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        {canMoveLeft && (
-          <button
-            type="button"
-            title="Pindah ke kolom sebelumnya"
-            onClick={(e) => {
+      {/* Quick Move Action Bar (Selalu terlihat di Handphone/Touchscreen, muncul saat hover di Desktop) */}
+      <div
+        className="mt-3 pt-2.5 border-t border-border/50 flex items-center justify-between gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Quick Status Dropdown (Paling praktis di layar HP untuk pindah status langsung) */}
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-[10px] text-muted-foreground font-medium shrink-0">Pindah:</span>
+          <select
+            value={task.status}
+            onChange={(e) => {
               e.stopPropagation()
-              onMoveTask({ id: task.id, newStatus: statusOrder[currentIndex - 1] })
+              onMoveTask({ id: task.id, newStatus: e.target.value })
             }}
-            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="h-7 text-xs font-semibold rounded-md border border-input bg-muted/70 hover:bg-muted text-foreground px-1.5 py-0.5 cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary truncate"
           >
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </button>
-        )}
-        {canMoveRight && (
-          <button
-            type="button"
-            title="Pindah ke kolom berikutnya"
-            onClick={(e) => {
-              e.stopPropagation()
-              onMoveTask({ id: task.id, newStatus: statusOrder[currentIndex + 1] })
-            }}
-            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-          >
-            <ChevronRight className="h-3.5 w-3.5" />
-          </button>
-        )}
+            <option value={TASK_STATUS.TODO}>To Do</option>
+            <option value={TASK_STATUS.IN_PROGRESS}>In Progress</option>
+            <option value={TASK_STATUS.REVIEW}>Review</option>
+            <option value={TASK_STATUS.DONE}>Done</option>
+          </select>
+        </div>
+
+        {/* Stepper Buttons (Tombol panah mundur / maju fase kerja) */}
+        <div className="flex items-center gap-1 shrink-0">
+          {canMoveLeft && (
+            <button
+              type="button"
+              title={`Mundur ke ${TASK_STATUS_LABELS[statusOrder[currentIndex - 1]]}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                onMoveTask({ id: task.id, newStatus: statusOrder[currentIndex - 1] })
+              }}
+              className="h-7 w-7 rounded-md border border-input bg-background hover:bg-muted text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors shadow-2xs active:scale-90"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+          )}
+          {canMoveRight && (
+            <button
+              type="button"
+              title={`Maju ke ${TASK_STATUS_LABELS[statusOrder[currentIndex + 1]]}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                onMoveTask({ id: task.id, newStatus: statusOrder[currentIndex + 1] })
+              }}
+              className="h-7 px-2 rounded-md bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 flex items-center gap-1 text-[11px] font-semibold transition-colors shadow-2xs active:scale-95"
+            >
+              <span>{TASK_STATUS_LABELS[statusOrder[currentIndex + 1]]}</span>
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
       </div>
     </motion.div>
   )

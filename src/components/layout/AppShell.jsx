@@ -13,7 +13,11 @@ export function AppShell() {
 
   return (
     <LayoutGroup id="emma-view-transition">
-      <div className="relative min-h-screen bg-background text-foreground flex antialiased overflow-x-hidden">
+      {/* Container utama dengan overflowX: clip agar tidak memotong position: sticky navbar pada mobile */}
+      <div
+        className="relative min-h-screen bg-background text-foreground flex antialiased"
+        style={{ overflowX: "clip" }}
+      >
         {/* Floating Modern Sorvo-Style Sidebar (z-50 di atas Dashboard) */}
         <Sidebar
           isOpen={sidebarOpen}
@@ -35,7 +39,7 @@ export function AppShell() {
           }}
           className="flex-1 flex flex-col min-w-0"
         >
-          {/* Floating Capsule Navbar */}
+          {/* Floating Capsule Navbar (Sticky di mobile dan desktop) */}
           <Navbar onOpenSidebar={() => setSidebarOpen(true)} />
 
           {/* Content Outlet with Native-like Fluid View Transition */}
