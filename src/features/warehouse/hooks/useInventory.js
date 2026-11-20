@@ -7,6 +7,9 @@ export function useInventory() {
   const inventoryQuery = useQuery({
     queryKey: ["warehouse", "inventory"],
     queryFn: warehouseApi.getInventory,
+    retry: false, // Hindari retry berulang yang memperlambat render
+    staleTime: 1000 * 30, // Cache 30 detik
+    refetchOnWindowFocus: false,
   })
 
   const movementMutation = useMutation({

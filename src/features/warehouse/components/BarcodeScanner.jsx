@@ -90,25 +90,6 @@ export function BarcodeScanner({ onScanSuccess }) {
           <Camera className="h-8 w-8 text-primary/60 mb-2 relative z-10" />
           <span className="text-xs text-slate-400 font-mono relative z-10">Area Pemindai Barcode</span>
         </div>
-
-        {/* Quick Sample Barcode Pills */}
-        <div className="mt-4 flex items-center justify-center gap-2 flex-wrap text-xs">
-          <span className="text-slate-400">Contoh Barcode:</span>
-          {["RM-STL-01", "RM-RSN-09", "FG-BOX-10"].map((sample) => (
-            <motion.button
-              key={sample}
-              whileTap={{ scale: 0.94 }}
-              type="button"
-              onClick={() => {
-                setBarcodeInput(sample)
-                handleScan(sample)
-              }}
-              className="rounded bg-slate-800 px-2 py-1 font-mono text-primary hover:bg-slate-700 transition-colors"
-            >
-              {sample}
-            </motion.button>
-          ))}
-        </div>
       </div>
 
       {/* Input Text Form */}

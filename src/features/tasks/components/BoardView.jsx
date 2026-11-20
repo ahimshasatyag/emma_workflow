@@ -60,7 +60,7 @@ export function BoardView() {
     handleDrop,
   } = useDragAndDrop(moveTask)
 
-  const currentUserName = user?.name || "Marta Seixas"
+  const currentUserName = user?.name || ""
 
   // Filter tasks berdasarkan search, prioritas, grup divisi, dan role kolaborasi
   const filteredTasks = useMemo(() => {
@@ -92,19 +92,12 @@ export function BoardView() {
         activeAssignmentFilter === "ASSIGNED_BY_ME"
       ) {
         const u = currentUserName.toLowerCase()
-        const isPIC =
-          task.assignee?.toLowerCase().includes(u) ||
-          task.assignee?.toLowerCase().includes("budi")
+        const isPIC = task.assignee ? task.assignee.toLowerCase().includes(u) : false
         const isCollab =
           task.collaborators &&
-          task.collaborators.some(
-            (c) => c.toLowerCase().includes(u) || c.toLowerCase().includes("budi")
-          )
+          task.collaborators.some((c) => c.toLowerCase().includes(u))
         const isAssignedByMe =
-          task.assignedBy?.toLowerCase().includes("marta") ||
-          task.assignedBy?.toLowerCase().includes("manager") ||
-          task.assignedBy?.toLowerCase().includes("atasan") ||
-          task.assignedBy?.toLowerCase().includes(u)
+          task.assignedBy ? task.assignedBy.toLowerCase().includes(u) : false
 
         if (activeAssignmentFilter === "MY_TASKS") {
           matchAssignment = isPIC || isCollab
@@ -114,6 +107,15 @@ export function BoardView() {
           // MY_AND_ASSIGNED: Menampilkan tugas yang dikerjakan oleh Saya/Tim DAN/ATAU Ditugaskan oleh Saya
           matchAssignment = isPIC || isCollab || isAssignedByMe
         }
+      } else if (activeAssignmentFilter !== "ALL") {
+        const filterVal = activeAssignmentFilter.toLowerCase()
+        matchAssignment =
+          task.assignee?.toLowerCase() === filterVal ||
+          task.assignee?.toLowerCase().includes(filterVal) ||
+          (task.collaborators &&
+            task.collaborators.some(
+              (c) => c.toLowerCase() === filterVal || c.toLowerCase().includes(filterVal)
+            ))
       }
 
       return matchSearch && matchPriority && matchGroup && matchAssignment

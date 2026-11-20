@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Trash2,
@@ -11,7 +11,6 @@ import {
   Building2,
   MessageSquare,
   Send,
-  ShieldCheck,
   UserCheck,
   Info,
 } from "lucide-react"
@@ -29,7 +28,9 @@ import { FormItem, FormLabel, FormControl } from "@/components/ui/form"
 import { TASK_STATUS, TASK_PRIORITY } from "@/config/constants"
 import { useTaskStore } from "../stores/taskStore"
 import { useAuth } from "@/features/auth/hooks/useAuth"
-import { TEAM_GROUPS, TEAM_MEMBERS } from "../data/teamData"
+import { useDivisions } from "../hooks/useDivisions"
+import { useKaryawan } from "../hooks/useKaryawan"
+import { kanbanItemApi } from "../api/kanbanItemApi"
 import { cn } from "@/lib/utils"
 
 export function TaskDetailModal({
@@ -48,6 +49,9 @@ export function TaskDetailModal({
     closeCreateModal,
   } = useTaskStore()
 
+  const { karyawanList = [] } = useKaryawan()
+  const { divisions = [] } = useDivisions()
+
   const isCreating = isCreateModalOpen
   const isOpen = isDetailModalOpen || isCreateModalOpen
 
@@ -56,18 +60,22 @@ export function TaskDetailModal({
   const [activeTab, setActiveTab] = useState("detail") // 'detail' | 'collaboration'
   const [commentText, setCommentText] = useState("")
 
-  const supervisorName = user?.name ? `${user.name} (Manager/Atasan)` : "Marta Seixas (Manager)"
+  const supervisorName = user?.name ? `${user.name} (Atasan)` : "Atasan"
+  const today = new Date().toISOString().split("T")[0]
 
   const [formData, setFormData] = useState({
     title: "",
     description: "",
     status: TASK_STATUS.TODO,
     priority: TASK_PRIORITY.MEDIUM,
-    group: "WAREHOUSE",
-    assignee: "Budi Santoso",
+    group: "",
+    assignee: "",
     assignedBy: supervisorName,
     collaborators: [],
-    dueDate: "",
+    collaboratorIds: [],
+    startDate: today,
+    endDate: today,
+    dueDate: today,
     tags: "",
   })
 
@@ -78,49 +86,124 @@ export function TaskDetailModal({
         description: "",
         status: TASK_STATUS.TODO,
         priority: TASK_PRIORITY.MEDIUM,
-        group: "WAREHOUSE",
-        assignee: "Budi Santoso",
+        group: "",
+        assignee: "",
         assignedBy: supervisorName,
-        collaborators: ["Siti Rahma"],
-        dueDate: new Date().toISOString().split("T")[0],
-        tags: "Operasional, WMS",
+        collaborators: [],
+        collaboratorIds: [],
+        startDate: today,
+        endDate: today,
+        dueDate: today,
+        tags: "",
       })
       setActiveTab("detail")
       setCommentText("")
     } else if (currentTask) {
+      const taskStart = currentTask.startDate || currentTask.dueDate || today
+      const taskEnd = currentTask.endDate || currentTask.dueDate || today
+
+      let collabs = currentTask.collaborators || []
+      let collabIds = currentTask.collaboratorIds || []
+
+      if (collabs.length > 0 && collabIds.length === 0 && karyawanList.length > 0) {
+        collabIds = collabs
+          .map((name) => karyawanList.find((k) => k.nm_karyawan === name)?.id_karyawan)
+          .filter(Boolean)
+      } else if (collabIds.length > 0 && collabs.length === 0 && karyawanList.length > 0) {
+        collabs = collabIds
+          .map((id) => karyawanList.find((k) => Number(k.id_karyawan) === Number(id))?.nm_karyawan)
+          .filter(Boolean)
+      }
+
       setFormData({
         title: currentTask.title || "",
         description: currentTask.description || "",
         status: currentTask.status || TASK_STATUS.TODO,
         priority: currentTask.priority || TASK_PRIORITY.MEDIUM,
-        group: currentTask.group || "WAREHOUSE",
+        group: currentTask.group || "",
         assignee: currentTask.assignee || "",
         assignedBy: currentTask.assignedBy || supervisorName,
-        collaborators: currentTask.collaborators || [],
-        dueDate: currentTask.dueDate || "",
+        collaborators: collabs,
+        collaboratorIds: collabIds,
+        startDate: taskStart,
+        endDate: taskEnd,
+        dueDate: taskEnd,
         tags: currentTask.tags ? currentTask.tags.join(", ") : "",
       })
       setCommentText("")
     }
-  }, [currentTask, isCreating, isOpen, supervisorName])
+  }, [currentTask, isCreating, isOpen, supervisorName, today, karyawanList])
+
+  // Sinkronisasi data anggota kolaborasi langsung dari public.t_kanban_item di Supabase
+  useEffect(() => {
+    let isMounted = true
+
+    async function fetchSavedItems() {
+      if (!currentTask || isCreating) return
+      const numericId =
+        currentTask.kanbanId ||
+        Number(String(currentTask.id).replace(/\D/g, ""))
+
+      if (!numericId) return
+
+      try {
+        const items = await kanbanItemApi.getItemsByKanbanId(numericId)
+        if (!isMounted || !Array.isArray(items) || items.length === 0) return
+
+        const loadedIds = items.map((it) => Number(it.id_karyawan)).filter(Boolean)
+        const loadedNames = loadedIds
+          .map((id) => karyawanList.find((k) => Number(k.id_karyawan) === id)?.nm_karyawan)
+          .filter(Boolean)
+
+        setFormData((prev) => ({
+          ...prev,
+          collaboratorIds: loadedIds,
+          collaborators: loadedNames.length > 0 ? loadedNames : prev.collaborators,
+        }))
+      } catch (err) {
+        console.warn("Gagal mengambil data dari t_kanban_item:", err)
+      }
+    }
+
+    if (isOpen && !isCreating && currentTask) {
+      fetchSavedItems()
+    }
+
+    return () => {
+      isMounted = false
+    }
+  }, [currentTask, isCreating, isOpen, karyawanList])
 
   const handleClose = () => {
     if (isCreating) closeCreateModal()
     else closeDetailModal()
   }
 
-  const toggleCollaborator = (name) => {
+  const toggleCollaborator = (nameOrId) => {
     setFormData((prev) => {
-      const exists = prev.collaborators.includes(name)
+      const karyawan = karyawanList.find(
+        (k) =>
+          Number(k.id_karyawan) === Number(nameOrId) ||
+          k.nm_karyawan === nameOrId
+      )
+      const targetName = karyawan?.nm_karyawan || String(nameOrId)
+      const targetId = karyawan ? Number(karyawan.id_karyawan) : Number(nameOrId)
+
+      const exists =
+        prev.collaborators.includes(targetName) ||
+        (targetId && prev.collaboratorIds.includes(targetId))
+
       if (exists) {
         return {
           ...prev,
-          collaborators: prev.collaborators.filter((c) => c !== name),
+          collaborators: prev.collaborators.filter((c) => c !== targetName),
+          collaboratorIds: prev.collaboratorIds.filter((id) => Number(id) !== targetId),
         }
       } else {
         return {
           ...prev,
-          collaborators: [...prev.collaborators, name],
+          collaborators: [...prev.collaborators, targetName],
+          collaboratorIds: targetId ? [...prev.collaboratorIds, targetId] : prev.collaboratorIds,
         }
       }
     })
@@ -139,18 +222,24 @@ export function TaskDetailModal({
         status: formData.status,
         priority: formData.priority,
         group: formData.group,
+        divisionId: selectedDivision?.id_karyawan_divisi || null,
         assignee: formData.assignee,
         assignedBy: formData.assignedBy,
         collaborators: formData.collaborators,
-        dueDate: formData.dueDate,
+        collaboratorIds: formData.collaboratorIds,
+        startDate: formData.startDate,
+        endDate: formData.endDate,
+        dueDate: formData.endDate || formData.startDate,
         tags: tagsArray,
         comments: [
           {
             id: `C-${Date.now()}`,
-            author: user?.name || "Marta Seixas",
+            author: user?.name || "Atasan",
             role: "Atasan / Manager",
-            avatar: "MS",
-            text: `Tugas ditugaskan kepada ${formData.assignee} dengan grup divisi ${formData.group}. Harap segera dikerjakan sesuai SOP.`,
+            avatar: user?.name
+              ? user.name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase()
+              : "AT",
+            text: `Tugas ditugaskan kepada anggota tim. Harap segera dikerjakan sesuai SOP.`,
             createdAt: "Baru saja",
             isSupervisor: true,
           },
@@ -160,15 +249,20 @@ export function TaskDetailModal({
     } else if (currentTask) {
       onUpdateTask?.({
         id: currentTask.id,
+        kanbanId: currentTask.kanbanId,
         title: formData.title,
         description: formData.description,
         status: formData.status,
         priority: formData.priority,
         group: formData.group,
+        divisionId: selectedDivision?.id_karyawan_divisi || null,
         assignee: formData.assignee,
         assignedBy: formData.assignedBy,
         collaborators: formData.collaborators,
-        dueDate: formData.dueDate,
+        collaboratorIds: formData.collaboratorIds,
+        startDate: formData.startDate,
+        endDate: formData.endDate,
+        dueDate: formData.endDate || formData.startDate,
         tags: tagsArray,
       })
       closeDetailModal()
@@ -182,13 +276,11 @@ export function TaskDetailModal({
     onAddComment?.({
       id: currentTask.id,
       comment: {
-        author: user?.name || "Marta Seixas",
-        role: "Manager Operasional (Atasan)",
-        avatar: (user?.name || "Marta Seixas")
-          .split(" ")
-          .map((n) => n[0])
-          .slice(0, 2)
-          .join(""),
+        author: user?.name || "Atasan",
+        role: "Atasan / Supervisor",
+        avatar: user?.name
+          ? user.name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase()
+          : "AT",
         text: commentText.trim(),
         isSupervisor: true,
       },
@@ -203,10 +295,29 @@ export function TaskDetailModal({
     }
   }
 
-  // Filter anggota tim berdasarkan grup terpilih untuk kemudahan seleksi bawahan
-  const selectedGroupMembers = TEAM_MEMBERS.filter(
-    (m) => formData.group === "ALL" || m.group === formData.group
-  )
+  // Cari objek divisi yang dipilih berdasarkan formData.group (nama divisi atau ID)
+  const selectedDivision = useMemo(() => {
+    if (!formData.group) return null
+    return (
+      divisions.find(
+        (d) =>
+          d.nm_karyawan_divisi?.toLowerCase() === formData.group?.toLowerCase() ||
+          String(d.id_karyawan_divisi) === String(formData.group)
+      ) || null
+    )
+  }, [divisions, formData.group])
+
+  // Filter daftar karyawan berdasarkan id_karyawan_divisi yang sesuai dengan divisi terpilih
+  const filteredKaryawan = useMemo(() => {
+    if (!formData.group) return []
+    if (!selectedDivision) {
+      // Fallback jika nama divisi belum terdaftar di tabel m_karyawan_divisi
+      return karyawanList
+    }
+    return karyawanList.filter(
+      (k) => Number(k.id_karyawan_divisi) === Number(selectedDivision.id_karyawan_divisi)
+    )
+  }, [karyawanList, selectedDivision, formData.group])
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
@@ -230,12 +341,12 @@ export function TaskDetailModal({
             )}
           </div>
           <DialogTitle className="text-xl">
-            {isCreating ? "Tambah & Delegasikan Tugas Baru" : "Detail & Kolaborasi Tugas"}
+            {isCreating ? "Tambah Tugas Baru" : "Detail & Kolaborasi Tugas"}
           </DialogTitle>
           <DialogDescription className="text-xs">
             {isCreating
-              ? "Atasan dapat menugaskan bawahan, memilih grup divisi, dan menambahkan rekan kolaborator."
-              : "Pantau progres, delegasikan ke bawahan, dan lakukan diskusi instruksi kerja tim."}
+              ? "Kelola tugas baru, pilih divisi kerja, dan tambahkan anggota kolaborasi tim."
+              : "Pantau progres tugas dan lakukan diskusi kerja tim."}
           </DialogDescription>
 
           {/* Modal Tab Navigation (Detail Form vs Diskusi/Instruksi Tim) */}
@@ -280,26 +391,6 @@ export function TaskDetailModal({
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
           {activeTab === "detail" ? (
             <form id="task-form" onSubmit={handleSubmit} className="space-y-4">
-              {/* Supervisor Info Card (Penugasan dari Atasan) */}
-              <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 flex items-start gap-3">
-                <div className="h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
-                  <ShieldCheck className="h-4 w-4" />
-                </div>
-                <div className="text-xs flex-1">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-foreground">
-                      Pemberi Tugas (Atasan / Supervisor):
-                    </span>
-                    <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-primary/15 text-primary">
-                      Atasan
-                    </span>
-                  </div>
-                  <p className="text-muted-foreground mt-0.5 font-medium">
-                    {formData.assignedBy}
-                  </p>
-                </div>
-              </div>
-
               {/* Judul Tugas */}
               <FormItem>
                 <FormLabel className="text-xs font-semibold">Judul Tugas</FormLabel>
@@ -313,102 +404,123 @@ export function TaskDetailModal({
                 </FormControl>
               </FormItem>
 
-              {/* Row: Grup Divisi & Penanggung Jawab Bawahan */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <FormItem>
-                  <FormLabel className="text-xs font-semibold flex items-center gap-1.5">
-                    <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-                    Divisi / Grup Kerja
-                  </FormLabel>
-                  <FormControl>
-                    <select
-                      className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      value={formData.group}
-                      onChange={(e) => setFormData({ ...formData, group: e.target.value })}
-                    >
-                      {TEAM_GROUPS.filter((g) => g.id !== "ALL").map((grp) => (
-                        <option key={grp.id} value={grp.id}>
-                          {grp.name} ({grp.badge})
+              {/* Grup Divisi */}
+              <FormItem>
+                <FormLabel className="text-xs font-semibold flex items-center gap-1.5">
+                  <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                  Divisi / Grup Kerja
+                </FormLabel>
+                <FormControl>
+                  <select
+                    className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    value={formData.group}
+                    onChange={(e) => setFormData({ ...formData, group: e.target.value })}
+                  >
+                    <option value="">-- Pilih Divisi --</option>
+                    {divisions.length > 0 &&
+                      divisions.map((grp) => (
+                        <option key={grp.id_karyawan_divisi} value={grp.nm_karyawan_divisi || ""}>
+                          {grp.nm_karyawan_divisi || `Divisi #${grp.id_karyawan_divisi}`}
                         </option>
                       ))}
-                    </select>
-                  </FormControl>
-                </FormItem>
+                    {formData.group &&
+                      !divisions.some((d) => d.nm_karyawan_divisi === formData.group) && (
+                        <option value={formData.group}>{formData.group}</option>
+                      )}
+                  </select>
+                </FormControl>
+              </FormItem>
 
-                <FormItem>
-                  <FormLabel className="text-xs font-semibold flex items-center gap-1.5">
-                    <User className="h-3.5 w-3.5 text-muted-foreground" />
-                    Penanggung Jawab (Bawahan / PIC)
-                  </FormLabel>
-                  <FormControl>
-                    <select
-                      className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      value={formData.assignee}
-                      onChange={(e) => setFormData({ ...formData, assignee: e.target.value })}
-                    >
-                      <optgroup label={`Anggota Divisi ${formData.group}`}>
-                        {selectedGroupMembers.map((member) => (
-                          <option key={member.id} value={member.name}>
-                            {member.name} — {member.role}
-                          </option>
-                        ))}
-                      </optgroup>
-                      <optgroup label="Semua Anggota Tim">
-                        {TEAM_MEMBERS.map((member) => (
-                          <option key={`all-${member.id}`} value={member.name}>
-                            {member.name} ({member.role})
-                          </option>
-                        ))}
-                      </optgroup>
-                    </select>
-                  </FormControl>
-                </FormItem>
-              </div>
-
-              {/* Rekan Kolaborasi Tim (Multi-member Collaboration) */}
-              <div className="space-y-1.5 rounded-lg border p-3 bg-card/60">
+              {/* Anggota Kolaborasi Tim dari public.m_karyawan (difilter berdasarkan id_karyawan_divisi) */}
+              <FormItem>
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold flex items-center gap-1.5 text-foreground">
+                  <FormLabel className="text-xs font-semibold flex items-center gap-1.5">
                     <Users className="h-3.5 w-3.5 text-primary" />
-                    Anggota Kolaborasi Tim (Rekan Kerja Tambahan)
-                  </label>
-                  <span className="text-[10px] text-muted-foreground">
-                    {formData.collaborators.length} dipilih
-                  </span>
+                    Anggota Kolaborasi Tim
+                  </FormLabel>
+                  {formData.collaborators.length > 0 && (
+                    <span className="text-[11px] font-semibold text-primary">
+                      {formData.collaborators.length} dipilih
+                    </span>
+                  )}
                 </div>
-                <p className="text-[11px] text-muted-foreground">
-                  Pilih bawahan atau staf lain yang turut berkolaborasi menyelesaikan tugas ini:
-                </p>
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {TEAM_MEMBERS.map((member) => {
-                    const isSelected = formData.collaborators.includes(member.name)
-                    const isMainAssignee = formData.assignee === member.name
+                <FormControl>
+                  <select
+                    className={cn(
+                      "w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                      !formData.group && "opacity-75 cursor-not-allowed bg-muted/40"
+                    )}
+                    value=""
+                    disabled={!formData.group}
+                    onChange={(e) => {
+                      const selectedId = Number(e.target.value)
+                      if (!selectedId) return
+                      const karyawan = karyawanList.find((k) => Number(k.id_karyawan) === selectedId)
+                      if (!karyawan) return
 
-                    return (
-                      <button
-                        key={member.id}
-                        type="button"
-                        disabled={isMainAssignee}
-                        onClick={() => toggleCollaborator(member.name)}
-                        className={cn(
-                          "px-2.5 py-1 text-xs rounded-md border transition-all flex items-center gap-1.5 cursor-pointer",
-                          isMainAssignee
-                            ? "opacity-50 cursor-not-allowed bg-muted border-border"
-                            : isSelected
-                            ? "bg-primary text-primary-foreground border-primary font-medium shadow-xs"
-                            : "bg-background text-muted-foreground hover:bg-muted border-input"
-                        )}
+                      setFormData((prev) => {
+                        const alreadySelected =
+                          prev.collaboratorIds.includes(selectedId) ||
+                          prev.collaborators.includes(karyawan.nm_karyawan)
+
+                        if (alreadySelected) return prev
+
+                        return {
+                          ...prev,
+                          collaboratorIds: [...prev.collaboratorIds, selectedId],
+                          collaborators: [...prev.collaborators, karyawan.nm_karyawan],
+                        }
+                      })
+                    }}
+                  >
+                    {!formData.group ? (
+                      <option value="">-- Pilih Divisi terlebih dahulu --</option>
+                    ) : filteredKaryawan.length === 0 ? (
+                      <option value="">-- Tidak ada anggota aktif pada divisi ini --</option>
+                    ) : (
+                      <option value="">
+                        -- Tambah Anggota --
+                      </option>
+                    )}
+                    {filteredKaryawan.map((k) => {
+                      const isSelected =
+                        formData.collaboratorIds.includes(Number(k.id_karyawan)) ||
+                        formData.collaborators.includes(k.nm_karyawan)
+                      return (
+                        <option
+                          key={k.id_karyawan}
+                          value={k.id_karyawan}
+                          disabled={isSelected}
+                        >
+                          {k.nm_karyawan} {isSelected ? "✓ (Sudah dipilih)" : ""}
+                        </option>
+                      )
+                    })}
+                  </select>
+                </FormControl>
+
+                {/* Badges Anggota Kolaborasi Terpilih */}
+                {formData.collaborators.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1.5">
+                    {formData.collaborators.map((name) => (
+                      <span
+                        key={name}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs bg-primary/10 text-primary border border-primary/20 font-medium"
                       >
-                        <span className="text-[10px] font-bold opacity-80">{member.avatar}</span>
-                        <span>{member.name}</span>
-                        {isMainAssignee && (
-                          <span className="text-[9px] bg-background/30 px-1 rounded">PIC Utama</span>
-                        )}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
+                        <span>{name}</span>
+                        <button
+                          type="button"
+                          onClick={() => toggleCollaborator(name)}
+                          className="hover:text-destructive text-primary/70 hover:bg-destructive/10 rounded px-1 transition-colors cursor-pointer text-sm font-bold leading-none"
+                          title={`Hapus ${name}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </FormItem>
 
               {/* Status Kolom & Prioritas */}
               <div className="grid grid-cols-2 gap-4">
@@ -445,32 +557,48 @@ export function TaskDetailModal({
                 </FormItem>
               </div>
 
-              {/* Batas Waktu & Kategori Tags */}
-              <div className="grid grid-cols-2 gap-4">
+              {/* Start Date & End Date */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <FormItem>
                   <FormLabel className="text-xs font-semibold flex items-center gap-1.5">
                     <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                    Batas Waktu (Due Date)
+                    Start Date (Tanggal Mulai)
                   </FormLabel>
                   <FormControl>
                     <Input
                       type="date"
-                      value={formData.dueDate}
-                      onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
+                      value={formData.startDate}
+                      onChange={(e) => {
+                        const newStart = e.target.value
+                        setFormData((prev) => ({
+                          ...prev,
+                          startDate: newStart,
+                          endDate: prev.endDate && prev.endDate < newStart ? newStart : prev.endDate,
+                          dueDate: prev.endDate && prev.endDate < newStart ? newStart : prev.endDate,
+                        }))
+                      }}
                     />
                   </FormControl>
                 </FormItem>
 
                 <FormItem>
                   <FormLabel className="text-xs font-semibold flex items-center gap-1.5">
-                    <Tag className="h-3.5 w-3.5 text-muted-foreground" />
-                    Tags / Kategori (Koma)
+                    <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                    End Date (Tanggal Selesai)
                   </FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="Purchasing, Audit, QC"
-                      value={formData.tags}
-                      onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
+                      type="date"
+                      value={formData.endDate}
+                      min={formData.startDate}
+                      onChange={(e) => {
+                        const newEnd = e.target.value
+                        setFormData((prev) => ({
+                          ...prev,
+                          endDate: newEnd,
+                          dueDate: newEnd,
+                        }))
+                      }}
                     />
                   </FormControl>
                 </FormItem>
@@ -497,7 +625,11 @@ export function TaskDetailModal({
                   <MessageSquare className="h-4 w-4 text-primary" />
                   Alur Komunikasi Kolaborasi
                 </span>
-                <span>PIC: {currentTask?.assignee}</span>
+                {currentTask?.collaborators && currentTask.collaborators.length > 0 && (
+                  <span className="truncate max-w-[200px]">
+                    Tim: {currentTask.collaborators.join(", ")}
+                  </span>
+                )}
               </div>
 
               {/* Daftar Pesan/Komentar */}
@@ -580,7 +712,7 @@ export function TaskDetailModal({
                 </div>
                 <p className="text-[10px] text-muted-foreground mt-1.5">
                   Terkirim atas nama:{" "}
-                  <strong className="text-foreground">{user?.name || "Marta Seixas"}</strong> (Atasan /
+                  <strong className="text-foreground">{user?.name || "Atasan"}</strong> (Atasan /
                   Supervisor)
                 </p>
               </form>

@@ -6,14 +6,12 @@ import {
   ChevronRight,
   ChevronLeft,
   MessageSquare,
-  ShieldCheck,
   Building2,
   Users,
 } from "lucide-react"
-import { TASK_PRIORITY, TASK_STATUS, TASK_STATUS_LABELS } from "@/config/constants"
+import { TASK_PRIORITY, TASK_STATUS, TASK_STATUS_LABELS, TEAM_GROUPS } from "@/config/constants"
 import { formatDate } from "@/lib/formatDate"
 import { useTaskStore } from "../stores/taskStore"
-import { TEAM_GROUPS } from "../data/teamData"
 import { cn } from "@/lib/utils"
 
 const priorityColors = {
@@ -38,12 +36,18 @@ export function TaskCard({ task, onDragStart, onMoveTask }) {
   const canMoveRight = currentIndex < statusOrder.length - 1
 
   // Cari config grup
-  const groupInfo = TEAM_GROUPS.find((g) => g.id === task.group) || {
+  const groupInfo = TEAM_GROUPS.find(
+    (g) => g.id === task.group || g.name === task.group
+  ) || {
     badge: task.group || "TIM",
-    color: "bg-muted text-muted-foreground border-border",
+    color: "bg-primary/10 text-primary border-primary/20",
   }
 
   const collaborators = task.collaborators || []
+  const teamMembers = [
+    ...collaborators,
+    ...(task.assignee && !collaborators.includes(task.assignee) ? [task.assignee] : []),
+  ]
   const commentsCount = task.comments ? task.comments.length : 0
 
   return (
@@ -101,16 +105,6 @@ export function TaskCard({ task, onDragStart, onMoveTask }) {
         </p>
       )}
 
-      {/* Penugasan oleh Atasan (Supervisor Attribution) */}
-      {task.assignedBy && (
-        <div className="flex items-center gap-1 text-[10px] text-muted-foreground mb-2">
-          <ShieldCheck className="h-3 w-3 text-primary shrink-0" />
-          <span className="truncate">
-            Ditugaskan oleh: <strong className="text-foreground font-medium">{task.assignedBy}</strong>
-          </span>
-        </div>
-      )}
-
       {/* Tags */}
       {task.tags && task.tags.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-3">
@@ -127,41 +121,47 @@ export function TaskCard({ task, onDragStart, onMoveTask }) {
 
       {/* Footer Info: Stacked Collaborators & Due Date & Comments */}
       <div className="flex items-center justify-between pt-2.5 border-t text-xs text-muted-foreground">
-        {/* Stacked Avatars for Primary Assignee + Collaborators */}
+        {/* Avatars Kolaborator / Anggota Tim */}
         <div className="flex items-center gap-1.5">
-          <div className="flex items-center -space-x-1.5 overflow-hidden">
-            {/* Primary Assignee Avatar */}
-            <div
-              title={`PIC: ${task.assignee || "Belum ditugaskan"}`}
-              className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-bold ring-2 ring-background z-10"
-            >
-              {task.assignee ? task.assignee.charAt(0) : "U"}
+          {teamMembers.length > 0 ? (
+            <>
+              <div className="flex items-center -space-x-1.5 overflow-hidden">
+                {teamMembers.slice(0, 3).map((member, i) => (
+                  <div
+                    key={i}
+                    title={`Anggota Tim: ${member}`}
+                    className={cn(
+                      "inline-flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold ring-2 ring-background",
+                      i === 0
+                        ? "bg-primary text-primary-foreground z-10"
+                        : "bg-muted-foreground/25 text-foreground z-0"
+                    )}
+                  >
+                    {member.charAt(0).toUpperCase()}
+                  </div>
+                ))}
+
+                {teamMembers.length > 3 && (
+                  <div
+                    title={`${teamMembers.length - 3} anggota lainnya`}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-muted text-muted-foreground text-[9px] font-bold ring-2 ring-background"
+                  >
+                    +{teamMembers.length - 3}
+                  </div>
+                )}
+              </div>
+
+              <span className="text-[11px] truncate max-w-[85px] font-medium text-foreground">
+                {teamMembers[0].split(" ")[0]}
+                {teamMembers.length > 1 ? ` +${teamMembers.length - 1}` : ""}
+              </span>
+            </>
+          ) : (
+            <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+              <Users className="h-3.5 w-3.5" />
+              <span>Tim</span>
             </div>
-
-            {/* Collaborator Avatars */}
-            {collaborators.slice(0, 2).map((collab, i) => (
-              <div
-                key={i}
-                title={`Kolaborator: ${collab}`}
-                className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-muted-foreground/25 text-foreground text-[9px] font-semibold ring-2 ring-background z-0"
-              >
-                {collab.charAt(0)}
-              </div>
-            ))}
-
-            {collaborators.length > 2 && (
-              <div
-                title={`${collaborators.length - 2} kolaborator lainnya`}
-                className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-muted text-muted-foreground text-[9px] font-bold ring-2 ring-background"
-              >
-                +{collaborators.length - 2}
-              </div>
-            )}
-          </div>
-
-          <span className="text-[11px] truncate max-w-[85px] font-medium text-foreground">
-            {task.assignee ? task.assignee.split(" ")[0] : "Belum"}
-          </span>
+          )}
         </div>
 
         {/* Due Date & Comments Counter */}
@@ -176,10 +176,14 @@ export function TaskCard({ task, onDragStart, onMoveTask }) {
             </div>
           )}
 
-          {task.dueDate && (
-            <div className="flex items-center gap-1">
+          {(task.startDate || task.endDate || task.dueDate) && (
+            <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
               <Calendar className="h-3 w-3" />
-              <span>{formatDate(task.dueDate)}</span>
+              <span>
+                {task.startDate && task.endDate && task.startDate !== task.endDate
+                  ? `${formatDate(task.startDate)} - ${formatDate(task.endDate)}`
+                  : formatDate(task.endDate || task.startDate || task.dueDate)}
+              </span>
             </div>
           )}
         </div>

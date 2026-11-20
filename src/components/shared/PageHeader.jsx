@@ -10,9 +10,16 @@ export function PageHeader({
   breadcrumbs = [],
   children,
   className,
+  bordered = true,
 }) {
   return (
-    <div className={cn("flex flex-col gap-4 md:flex-row md:items-center md:justify-between pb-6 mb-6 border-b", className)}>
+    <div
+      className={cn(
+        "flex flex-col gap-4 md:flex-row md:items-center md:justify-between",
+        bordered ? "pb-6 mb-6 border-b" : "pb-0 mb-0 border-b-0",
+        className
+      )}
+    >
       <div className="space-y-1">
         {breadcrumbs.length > 0 && (
           <nav className="flex items-center space-x-2 text-xs text-muted-foreground mb-1">

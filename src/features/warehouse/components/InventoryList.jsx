@@ -8,21 +8,23 @@ export function InventoryList() {
 
   const columns = [
     {
-      header: "SKU / Kode",
-      accessorKey: "sku",
+      header: "Kode Produk (m_product)",
+      accessorKey: "code_product",
       cell: (row) => (
         <span className="font-mono font-bold text-xs text-primary">
-          {row.sku}
+          {row.code_product || row.sku}
         </span>
       ),
     },
     {
-      header: "Nama Barang",
+      header: "Nama Produk / Barang",
       accessorKey: "name",
       cell: (row) => (
         <div>
-          <div className="font-medium text-foreground">{row.name}</div>
-          <div className="text-xs text-muted-foreground">{row.category}</div>
+          <div className="font-medium text-foreground">
+            {row.name_product || row.name || row.e_product_name || row.code_product || row.sku}
+          </div>
+          {row.category && <div className="text-xs text-muted-foreground">{row.category}</div>}
         </div>
       ),
     },
